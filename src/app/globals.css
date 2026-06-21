@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  background: #0a0a0f;
+  color: #e5e7eb;
+}
+
+/* ---- Animations (vanilla CSS, no libraries) ---- */
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-14px); }
+  to { opacity: 1; transform: none; }
+}
+.anim-slide-in-left { animation: slideInLeft 200ms ease-out; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+.anim-fade-up { animation: fadeUp 300ms ease-out; }
+
+@keyframes scalePulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.28); }
+  100% { transform: scale(1); }
+}
+.anim-scale-pulse { animation: scalePulse 300ms ease-out; display: inline-block; }
+
+/* SVG node pulse — bright flash then settle */
+@keyframes flowPulse {
+  0% { transform: scale(1); filter: brightness(1); }
+  45% { transform: scale(1.1); filter: brightness(2); }
+  100% { transform: scale(1); filter: brightness(1.25); }
+}
+.flow-pulse { animation: flowPulse 600ms ease-out; transform-box: fill-box; transform-origin: center; }
+
+/* SVG error flash */
+@keyframes redFlash {
+  0%, 100% { filter: brightness(1.25); }
+  50% { filter: brightness(1) drop-shadow(0 0 6px #f87171); }
+}
+.flow-error { animation: redFlash 500ms ease-out 2; }
+
+/* SVG connector "data flowing" dashes */
+@keyframes flowDash { to { stroke-dashoffset: -16; } }
+.flow-dash { stroke-dasharray: 4 4; animation: flowDash 600ms linear infinite; }
+
+/* SVG line draw-in (use with pathLength=1) */
+@keyframes draw1 { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.anim-draw { stroke-dasharray: 1; animation: draw1 700ms ease-out forwards; }
+
+@keyframes subtlePulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.85; }
+}
+.anim-subtle-pulse { animation: subtlePulse 1.6s ease-in-out infinite; }
+
+/* Collapsible drawer open */
+@keyframes drawerOpen {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 600px; }
+}
+.anim-drawer { animation: drawerOpen 300ms ease-out; overflow: hidden; }
+
+/* Top fade so the oldest log line dissolves */
+.log-fade-mask { -webkit-mask-image: linear-gradient(to bottom, transparent, black 24px); mask-image: linear-gradient(to bottom, transparent, black 24px); }
+
+/* Stock ticker continuous scroll (track is duplicated; -50% = one full set) */
+@keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.ticker-track { animation: tickerScroll 50s linear infinite; }
+.ticker-wrap:hover .ticker-track { animation-play-state: paused; }
+
+/* Shake (violations bump, error node) */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+.anim-shake { animation: shake 420ms ease-in-out; }
+
+/* Subtle icon bounce for the active pipeline node */
+@keyframes iconBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+.anim-bounce { animation: iconBounce 0.85s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+
+/* Pulsing status dot (green = active) */
+@keyframes dotPulse {
+  0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6); }
+  70% { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+}
+.anim-dot-pulse { animation: dotPulse 1.8s ease-out infinite; }
+
+/* Modal backdrop + panel entrance */
+@keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
+.anim-backdrop { animation: backdropIn 160ms ease-out; }
+@keyframes modalIn { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
+.anim-modal { animation: modalIn 220ms ease-out; }
+
+/* Terminal blinking cursor */
+@keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+.anim-blink { animation: blink 1s step-end infinite; }
