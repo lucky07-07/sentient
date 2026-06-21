@@ -42,18 +42,31 @@ Sentient is a self-running intelligence terminal that monitors the entire AI eco
 
 ## How it works
 
-```mermaid
-flowchart LR
-    A[Fetch 8 sources] --> B[Chunk & embed]
-    B --> C[(LanceDB)]
-    C --> D[RAG retrieval]
-    D --> E[Draft section]
-    E --> F{Verify}
-    F -- fail --> G[Revise]
-    G --> F
-    F -- pass --> H[Publish + citations]
-    H --> I[Meta-agent: self-improve]
-    I -. patches constitution .-> E
+```
+   Fetch 8 sources
+         |
+         v
+   Chunk + embed   (768-dim vectors)
+         |
+         v
+   LanceDB   (vector store)
+         |
+         v
+   RAG retrieval   (top-6 chunks per topic)
+         |
+         v
+   Draft section   (Groq qwen3-32b + tools)
+         |
+         v
+   Verify   (critic checks every claim)
+         |
+    pass  +----- fail -----> Revise -----> re-verify  (max 3x)
+         |
+         v
+   Publish + citations
+         |
+         v
+   Meta-agent: self-improve  -->  patches the constitution for the next run
 ```
 
 Sources are fetched, deduplicated, chunked, and embedded into LanceDB. For each briefing topic the agent retrieves the most relevant chunks, drafts a section, and hands it to a critic that checks every claim against the source chunks. Failed sections are revised and re-verified (up to three attempts) before publishing with inline citations. When the run finishes, a meta-agent reviews every violation it caught and writes new rules back into the constitution for next time.
@@ -103,95 +116,66 @@ Standard RAG retrieves chunks and generates once. Sentient's pipeline is agentic
 
 ### System Overview
 
-```mermaid
-graph TD
-    subgraph Sources["Data Sources"]
-        S1[arXiv API]
-        S2[Reddit OAuth2]
-        S3[GitHub Trending]
-        S4[HuggingFace Hub]
-        S5[GDELT News]
-        S6[Yahoo Finance]
-        S7[Papers With Code]
-        S8[AI Company RSS]
-    end
+```
+==============================================================================
+  DATA SOURCES (8)
+  arXiv,  Reddit,  GitHub Trending,  HuggingFace,  GDELT,
+  Yahoo Finance,  Papers With Code,  AI Company RSS
+==============================================================================
+                  |
+                  v   /api/fetch
+==============================================================================
+  INGESTION PIPELINE
+  Deduplicate  -->  Chunk (500 tokens)  -->  Gemini embed (768d)  -->  LanceDB
+==============================================================================
+                  |
+                  v   retrieve top-6 chunks
+==============================================================================
+  AGENTIC RAG LOOP
 
-    subgraph Pipeline["Ingestion Pipeline"]
-        F[/api/fetch]
-        D[Deduplicate]
-        C[Chunk 500 tokens]
-        E[Gemini Embeddings<br/>gemini-embedding-001<br/>768 dims]
-        V[(LanceDB<br/>Vector Store)]
-    end
-
-    subgraph AgentLoop["Agentic RAG Loop"]
-        R[Retrieve top-K chunks]
-        G[Groq qwen3-32b<br/>Draft section]
-        CR[Critic Agent<br/>Verify claims]
-        RV{Pass?}
-        RE[Revise]
-        PB[Publish section]
-        MA[Meta-Agent<br/>Self-improve]
-        AM[(agent_memory.json<br/>Constitution patches)]
-    end
-
-    subgraph Tools["Agent Tools"]
-        T1[fetch_url]
-        T2[get_stock_price]
-        T3[compare_benchmarks]
-        T4[classify_news]
-        T5[verify_claim]
-    end
-
-    subgraph Dashboard["Live Dashboard"]
-        SSE[SSE Stream]
-        UI[Bloomberg Terminal UI]
-        KG[Knowledge Graph]
-        NN[Neural Decision Visualizer]
-        SC[Stock Charts]
-        AC[Analyst Chat]
-    end
-
-    Sources --> F
-    F --> D --> C --> E --> V
-    V --> R --> G
-    G --> T1 & T2 & T3 & T4 & T5
-    T1 & T2 & T3 & T4 & T5 --> G
-    G --> CR --> RV
-    RV -- fail --> RE --> CR
-    RV -- pass --> PB
-    PB --> MA --> AM
-    AM -.->|next run| R
-    PB --> SSE --> UI
-    V --> KG & AC
-    PB --> NN
+  Draft (Groq qwen3-32b)  <-->  Tools:  fetch_url, get_stock_price,
+       |                                compare_benchmarks, classify_news,
+       v                                verify_claim
+  Critic  --  verifies every claim against the source chunks
+       |
+  pass +----- fail -----> Revise -----> back to Critic   (max 3x)
+       |
+       v
+  Publish + citations  -->  Meta-agent self-improve  -->  agent_memory.json
+                                                          (patches next run)
+==============================================================================
+                  |
+                  v   SSE stream
+==============================================================================
+  LIVE DASHBOARD   (Bloomberg Terminal UI)
+  Knowledge Graph,  Neural Decision Visualizer,  Stock Charts,  Analyst Chat
+==============================================================================
 ```
 
 ### Agentic RAG Flow
 
-```mermaid
-sequenceDiagram
-    participant S as Sources (8x)
-    participant V as LanceDB
-    participant G as Groq qwen3-32b
-    participant C as Critic Agent
-    participant M as Meta-Agent
-    participant D as Dashboard
-
-    S->>V: Fetch → Chunk → Embed (768d)
-    loop Per briefing section
-        V->>G: Top-6 chunks + constitution
-        G->>G: Tool calls (fetch_url, verify_claim...)
-        G->>C: Draft section
-        C->>C: Verify claims against chunks
-        alt Pass
-            C->>D: Publish + verification report
-        else Fail (max 3×)
-            C->>G: Violations → Revise
-        end
-    end
-    G->>M: All violation logs
-    M->>V: Patch constitution for next run
+```
+  Sources      LanceDB     Groq(qwen3)     Critic       Meta-agent
+     |            |             |             |              |
+     | fetch + chunk + embed (768d)          |              |
+     |----------->|             |             |              |
+     |            | top-6 chunks + constitution             |
+     |            |------------>|             |              |
+     |            | tool calls: fetch_url, get_stock_price,  |
+     |            | verify_claim, ...   (self-loop)          |
+     |            |             | draft section              |
+     |            |             |------------>|              |
+     |            | verify every claim vs source chunks (self)
+     |            |             |             |              |
+     |            |  PASS:  publish section + verification report
+     |            |             |             |              |
+     |            |  FAIL:  violations --> revise  (loop, max 3x)
+     |            |             |<------------|              |
+     |            |             | all violation logs         |
+     |            |             |--------------------------->|
+     |            | patch constitution for the next run      |
+     |            |<-----------------------------------------|
+     v            v             v             v              v
 ```
 
 ## Data sources
