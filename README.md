@@ -2,6 +2,8 @@
 
 > The AI that watches AI — and audits itself.
 
+> 📹 **[30-second demo script](README.md#recording-a-30-second-demo)** — record your own walkthrough using the guide below
+
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
@@ -15,14 +17,14 @@ Sentient is a self-running intelligence terminal that monitors the entire AI eco
 
 ## Screenshots
 
-### Workstation
+### Workstation — Bloomberg Terminal
 ![Workstation](docs/screenshots/workstation.png)
 
 ### Monitoring — Neural Decision Graph
-![Monitoring — Neural Decision Graph](docs/screenshots/monitoring.png)
+![Monitoring](docs/screenshots/monitoring.png)
 
-### Stock Deep-Dive
-![Stock Deep-Dive](docs/screenshots/stock-deep-dive.png)
+### Stock Deep-Dive — 30-Day Candlesticks
+![Stock Chart](docs/screenshots/stock-deep-dive.png)
 
 ## Features
 
@@ -56,20 +58,141 @@ flowchart LR
 
 Sources are fetched, deduplicated, chunked, and embedded into LanceDB. For each briefing topic the agent retrieves the most relevant chunks, drafts a section, and hands it to a critic that checks every claim against the source chunks. Failed sections are revised and re-verified (up to three attempts) before publishing with inline citations. When the run finishes, a meta-agent reviews every violation it caught and writes new rules back into the constitution for next time.
 
-## Tech stack
+## Tech Stack
 
-| Layer | Technology |
+### Frontend
+| Technology | Role |
 |---|---|
-| Framework | Next.js 14 (App Router) |
-| Language | TypeScript |
-| Styling | Tailwind CSS |
-| Charts | lightweight-charts v5 (TradingView) |
-| Graphs | D3.js v7 |
-| LLM Generation | Groq API (qwen/qwen3-32b) |
-| Embeddings | Gemini (gemini-embedding-001) |
-| Vector Store | LanceDB |
-| Streaming | Server-Sent Events (SSE) |
-| Cron | node-cron |
+| Next.js 14 (App Router) | Full-stack framework — API routes + React UI |
+| React 18 | UI library with SSE streaming |
+| Tailwind CSS | Styling |
+| lightweight-charts v5 | TradingView candlestick + volume charts |
+| D3.js v7 | Force-directed knowledge graph + canvas rendering |
+| Canvas API | Neural decision visualizer, animated knowledge graph |
+| Server-Sent Events | Real-time agent log streaming to browser |
+
+### AI & RAG Pipeline
+| Technology | Role |
+|---|---|
+| **RAG Type** | **Agentic RAG + Self-Reflective RAG + Adaptive RAG** |
+| Groq API (qwen/qwen3-32b) | LLM generation — reasoning model with tool calling |
+| Gemini gemini-embedding-001 | Text → 768-dim vector embeddings |
+| LanceDB | Local vector store — chunk storage + cosine similarity search |
+| **Retrieval** | Top-K semantic search per topic (K=6 chunks per section) |
+| **Generation** | Groq function calling with 5 tools: fetch_url, get_stock_price, compare_benchmarks, classify_news, verify_claim |
+| **Self-Reflection** | Critic model call verifies every draft against source chunks before publish |
+| **Adaptive** | Meta-agent patches the system constitution after each run via agent_memory.json |
+| **Agent Loop** | Draft → Verify → Revise (max 3×) → Publish → Self-improve |
+
+### Why Agentic RAG?
+Standard RAG retrieves chunks and generates once. Sentient's pipeline is agentic because:
+- The LLM **decides** when to call tools mid-generation (not a fixed pipeline)
+- A **critic agent** verifies output against source chunks and triggers revision
+- A **meta-agent** analyzes failure patterns and rewrites the system prompt
+- The retrieval loop is **adaptive** — constitution patches change what gets retrieved and how it's verified on the next run
+
+### Backend & Infrastructure
+| Technology | Role |
+|---|---|
+| Next.js API Routes | /api/fetch, /api/briefing, /api/cron, /api/stream, /api/search, /api/chat, /api/metrics, /api/logo |
+| node-cron | Daily automated pipeline trigger (08:00) |
+| node-fetch / native fetch | Source data fetching with 503/429 retry backoff |
+| TypeScript | Full type safety across all layers |
+
+## Architecture
+
+### System Overview
+
+```mermaid
+graph TD
+    subgraph Sources["Data Sources"]
+        S1[arXiv API]
+        S2[Reddit OAuth2]
+        S3[GitHub Trending]
+        S4[HuggingFace Hub]
+        S5[GDELT News]
+        S6[Yahoo Finance]
+        S7[Papers With Code]
+        S8[AI Company RSS]
+    end
+
+    subgraph Pipeline["Ingestion Pipeline"]
+        F[/api/fetch]
+        D[Deduplicate]
+        C[Chunk 500 tokens]
+        E[Gemini Embeddings<br/>gemini-embedding-001<br/>768 dims]
+        V[(LanceDB<br/>Vector Store)]
+    end
+
+    subgraph AgentLoop["Agentic RAG Loop"]
+        R[Retrieve top-K chunks]
+        G[Groq qwen3-32b<br/>Draft section]
+        CR[Critic Agent<br/>Verify claims]
+        RV{Pass?}
+        RE[Revise]
+        PB[Publish section]
+        MA[Meta-Agent<br/>Self-improve]
+        AM[(agent_memory.json<br/>Constitution patches)]
+    end
+
+    subgraph Tools["Agent Tools"]
+        T1[fetch_url]
+        T2[get_stock_price]
+        T3[compare_benchmarks]
+        T4[classify_news]
+        T5[verify_claim]
+    end
+
+    subgraph Dashboard["Live Dashboard"]
+        SSE[SSE Stream]
+        UI[Bloomberg Terminal UI]
+        KG[Knowledge Graph]
+        NN[Neural Decision Visualizer]
+        SC[Stock Charts]
+        AC[Analyst Chat]
+    end
+
+    Sources --> F
+    F --> D --> C --> E --> V
+    V --> R --> G
+    G --> T1 & T2 & T3 & T4 & T5
+    T1 & T2 & T3 & T4 & T5 --> G
+    G --> CR --> RV
+    RV -- fail --> RE --> CR
+    RV -- pass --> PB
+    PB --> MA --> AM
+    AM -.->|next run| R
+    PB --> SSE --> UI
+    V --> KG & AC
+    PB --> NN
+```
+
+### Agentic RAG Flow
+
+```mermaid
+sequenceDiagram
+    participant S as Sources (8x)
+    participant V as LanceDB
+    participant G as Groq qwen3-32b
+    participant C as Critic Agent
+    participant M as Meta-Agent
+    participant D as Dashboard
+
+    S->>V: Fetch → Chunk → Embed (768d)
+    loop Per briefing section
+        V->>G: Top-6 chunks + constitution
+        G->>G: Tool calls (fetch_url, verify_claim...)
+        G->>C: Draft section
+        C->>C: Verify claims against chunks
+        alt Pass
+            C->>D: Publish + verification report
+        else Fail (max 3×)
+            C->>G: Violations → Revise
+        end
+    end
+    G->>M: All violation logs
+    M->>V: Patch constitution for next run
+```
 
 ## Data sources
 
